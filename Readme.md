@@ -6,11 +6,11 @@ A lightweight and customizable status bar written in Rust, designed for Linux us
 
 - **CPU Usage**: Displays the current CPU load with customizable colors.
 - **Battery Status**: Displays the battery percentage and changes the icon and color based on battery levels:
-  - 0-20%: Red background with the lowest battery icon (``)
-  - 21-40%: Orange background with a low battery icon (``)
-  - 41-60%: Yellow background with a medium battery icon (``)
-  - 61-80%: Green background with a high battery icon (``)
-  - 81-100%: Blue background with a full battery icon (``)
+  - 0-20%: Red background with the lowest battery icon
+  - 21-40%: Orange background with a low battery icon
+  - 41-60%: Yellow background with a medium battery icon
+  - 61-80%: Green background with a high battery icon
+  - 81-100%: Blue background with a full battery icon
 - **Wi-Fi Connectivity**: Displays the Wi-Fi status (Connected/Disconnected) and changes the background color to red when disconnected.
 - **Network Speed**: Displays the download and upload speed, converting to MB/s when the speed exceeds 10 KB/s.
 - **Date and Time**: Displays the current date (day and month) and time in `HH:MM AM/PM` format.
