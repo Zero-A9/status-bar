@@ -1,4 +1,4 @@
-![](screen.png)
+![](screen1.png)
 # Rust Status Bar
 
 A lightweight and customizable status bar written in Rust, designed for Linux users. This status bar displays useful system information such as CPU usage, battery status, Wi-Fi connectivity, network speed, and the current date and time. It also dynamically updates the colors and icons based on certain thresholds, like battery percentage or Wi-Fi connection status.
