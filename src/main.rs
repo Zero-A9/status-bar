@@ -157,9 +157,9 @@ impl StatusBar {
 
     fn update_status(&mut self) {
         let status = format!("{}{}{}{}{}", 
+                             self.clock(),
                              self.loadavg(), 
                              self.battery(), 
-                             self.clock(),
                              self.volume(),
                              self.wlan());
         Command::new("xsetroot")
