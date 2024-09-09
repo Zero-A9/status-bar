@@ -18,26 +18,46 @@ impl BarSegment {
     }
 }
 
+struct CachedData<T> {
+    value: T,
+    last_updated: Instant,
+}
+
+impl<T> CachedData<T> {
+    fn new(value: T) -> Self {
+        Self {
+            value,
+            last_updated: Instant::now(),
+        }
+    }
+
+    fn is_expired(&self, duration: Duration) -> bool {
+        self.last_updated.elapsed() >= duration
+    }
+}
+
 struct StatusBar {
     cpu: BarSegment,
-    // battery: BarSegment,
     wifi: BarSegment,
     nowifi: BarSegment,
     clock: BarSegment,
-    // network: BarSegment,
     volume: BarSegment,
+    battery_cache: CachedData<String>,
+    clock_cache: CachedData<String>,
+    previous_status: String,
 }
 
 impl StatusBar {
     fn new() -> Self {
         StatusBar {
             cpu: BarSegment { bg_color: "^b#b383f3^", fg_color: "^c#2E3440^" },  // Nord14 and Nord0
-            // battery: BarSegment { bg_color: "^b#b383f3^", fg_color: "^c#2E3440^" },  // Nord11 and Nord6
             wifi: BarSegment { bg_color: "^b#3fc1b0^", fg_color: "^c#2E3440^" },  // Nord8 and Nord0
             nowifi: BarSegment { bg_color: "^b#d73f3f^", fg_color: "^c#2E3440^" },  // Nord8 and Nord0
             clock: BarSegment { bg_color: "^b#599dcf^", fg_color: "^c#3E3440^" },  // Nord10 and Nord6
-            // network: BarSegment { bg_color: "^b#359ad4^", fg_color: "^c#2E3440^" },  // Nord7 and Nord0
-            volume: BarSegment { bg_color: "^b#d95574^", fg_color: "^c#2E3440^" },  // Nord12 and Nord6
+            volume: BarSegment { bg_color: "^b#818991^", fg_color: "^c#2E3440^" },  // Nord12 and Nord6
+            battery_cache: CachedData::new(String::new()),  // Initialize with empty string
+            clock_cache: CachedData::new(String::new()),    // Initialize with empty string
+            previous_status: String::new(),
         }
     }
 
@@ -47,39 +67,59 @@ impl StatusBar {
         self.cpu.format(&format!("CPU: {}", cpu_val))
     }
 
-    // fn battery(&self) -> String {
-    //     let capacity_str = fs::read_to_string("/sys/class/power_supply/BAT0/capacity").unwrap_or("N/A".to_string());
-    //     let capacity: u8 = capacity_str.trim().parse().unwrap_or(0);
-
-    //     let icon = match capacity {
-    //         0..=20 => "",
-    //         21..=40 => "",
-    //         41..=60 => "",
-    //         61..=80 => "",
-    //         81..=100 => "",
-    //         _ => "",
-    //     };
-
-    //     self.battery.format(&format!("{}  {}%", icon, capacity))
+    // fn battery(&mut self) -> String {
+    //     let cache_duration = Duration::from_secs(30);  // Cache battery status for 30 seconds
+    //     if self.battery_cache.is_expired(cache_duration) {
+    //         let capacity_str = fs::read_to_string("/sys/class/power_supply/BAT0/capacity").unwrap_or("N/A".to_string());
+    //         let capacity: u8 = capacity_str.trim().parse().unwrap_or(0);
+    //         let (icon, bg_color, fg_color) = match capacity {
+    //             0..=20 => ("", "^b#BF616A^", "^c#ECEFF4^"),  // Red background for low battery
+    //             21..=40 => ("", "^b#D08770^", "^c#2E3440^"), // Orange background for 21-40% battery
+    //             41..=60 => ("", "^b#EBCB8B^", "^c#2E3440^"), // Yellow background for 41-60% battery
+    //             61..=80 => ("", "^b#A3BE8C^", "^c#2E3440^"), // Green background for 61-80% battery
+    //             81..=100 => ("", "^b#88C0D0^", "^c#2E3440^"), // Blue background for full battery
+    //             _ => ("", "^b#4C566A^", "^c#D8DEE9^"),       // Default color for unknown status
+    //         };
+    //         // Update the cache with the new value
+    //         self.battery_cache = CachedData::new(format!("{}{} {}  {}% {}", bg_color, fg_color, icon, capacity, RESET));
+    //     }
+    //     self.battery_cache.value.clone()
     // }
-fn battery(&self) -> String {
-    let capacity_str = fs::read_to_string("/sys/class/power_supply/BAT0/capacity").unwrap_or("N/A".to_string());
-    let capacity: u8 = capacity_str.trim().parse().unwrap_or(0);
+        fn battery(&mut self) -> String {
+        let cache_duration = Duration::from_secs(30); // Cache battery for 30 seconds
 
-    // Define the battery icon and color based on the capacity range
-    let (icon, bg_color, fg_color) = match capacity {
-        0..=20 => ("", "^b#BF616A^", "^c#ECEFF4^"),  // Red background for low battery
-        21..=40 => ("", "^b#D08770^", "^c#2E3440^"), // Orange background for 21-40% battery
-        41..=60 => ("", "^b#EBCB8B^", "^c#2E3440^"), // Yellow background for 41-60% battery
-        61..=80 => ("", "^b#A3BE8C^", "^c#2E3440^"), // Green background for 61-80% battery
-        81..=100 => ("", "^b#88C0D0^", "^c#2E3440^"), // Blue background for 81-100% battery
-        _ => ("", "^b#4C566A^", "^c#D8DEE9^"),       // Default color for unknown status
-    };
+        // Read the current charging status
+        let status = fs::read_to_string("/sys/class/power_supply/BAT0/status").unwrap_or("Unknown".to_string()).trim().to_string();
 
-    // Format the output with the appropriate color, icon, and capacity percentage
-    format!("{}{} {}  {}% {}", bg_color, fg_color, icon, capacity, RESET)
-}
+        // If the status changes or the cache is expired, update the cache
+        if status != self.previous_status || self.battery_cache.is_expired(cache_duration) {
+            // Update the previous status
+            self.previous_status = status.clone();
 
+            // Read the battery capacity
+            let capacity_str = fs::read_to_string("/sys/class/power_supply/BAT0/capacity").unwrap_or("N/A".to_string());
+            let capacity: u8 = capacity_str.trim().parse().unwrap_or(0);
+
+            // Determine the icon and color based on capacity and charging status
+            let (icon, bg_color, fg_color) = match status.as_str() {
+                "Charging" => ("", "^b#A3BE8C^", "^c#2E3440^"),  // Green background when charging
+                _ => match capacity {
+                    0..=20 => (" ", "^b#BF616A^", "^c#ECEFF4^"),  // Red background for low battery
+                    21..=40 => (" ", "^b#D08770^", "^c#2E3440^"), // Orange background for 21-40% battery
+                    41..=60 => (" ", "^b#EBCB8B^", "^c#2E3440^"), // Yellow background for 41-60% battery
+                    61..=80 => (" ", "^b#A3BE8C^", "^c#2E3440^"), // Green background for 61-80% battery
+                    81..=100 => (" ", "^b#88C0D0^", "^c#2E3440^"), // Blue background for full battery
+                    _ => ("", "^b#4C566A^", "^c#D8DEE9^"),       // Default color for unknown status
+                },
+            };
+
+            // Update the cache with the formatted string
+            self.battery_cache = CachedData::new(format!("{}{} {} {}% {}", bg_color, fg_color, icon, capacity, RESET));
+        }
+
+        // Return the cached value
+        self.battery_cache.value.clone()
+    }
 
     fn wlan(&self) -> String {
         let operstate = fs::read_to_string("/sys/class/net/wlp0s20f3/operstate").unwrap_or("down".to_string());
@@ -88,59 +128,21 @@ fn battery(&self) -> String {
             "down" => self.nowifi.format("Disconnected"),
             _ => self.wifi.format("Unknown")
         }
-        
     }
 
-    fn clock(&self) -> String {
-        let now = Local::now();
-        let time_str = now.format("%I:%M %p").to_string();  // Format the time as HH:MM AM/PM
-        let date_str = now.format("%m/%d").to_string();  // Format the date as YYYY-MM-DD
-        self.clock.format(&format!(" {}  {}", time_str, date_str))
+    fn clock(&mut self) -> String {
+        let cache_duration = Duration::from_secs(60);  // Cache clock for 60 seconds
+        if self.clock_cache.is_expired(cache_duration) {
+            let now = Local::now();
+            let time_str = now.format("%I:%M %p").to_string();  // Format the time as HH:MM AM/PM
+            let date_str = now.format("%m/%d").to_string();  // Format the date as MM/DD
+
+            // Update the cache with the new value
+            self.clock_cache = CachedData::new(self.clock.format(&format!(" {}  {}", time_str, date_str)));
+        }
+
+        self.clock_cache.value.clone()
     }
-
-//     fn network_speed(&self) -> String {
-//     let net_info = Command::new("ifstat")
-//         .arg("-i")
-//         .arg("wlp0s20f3")  // Replace with your network interface if different
-//         .arg("1")
-//         .arg("1")
-//         .output()
-//         .expect("Failed to fetch network speed");
-
-//     let output = String::from_utf8_lossy(&net_info.stdout);
-//     let lines: Vec<&str> = output.lines().collect();
-
-//     if lines.len() >= 3 {
-//         let speeds: Vec<&str> = lines[2].split_whitespace().collect();
-//         if speeds.len() >= 2 {
-//             let download_kb: f64 = speeds[0].parse().unwrap_or(0.0);
-//             let upload_kb: f64 = speeds[1].parse().unwrap_or(0.0);
-
-//             // Convert speeds greater than 10.00 KB/s to MB/s
-//             let (download, download_unit) = if download_kb > 10.0 {
-//                 (download_kb / 1024.0, "MB/s")
-//             } else {
-//                 (download_kb, "KB/s")
-//             };
-
-//             let (upload, upload_unit) = if upload_kb > 10.0 {
-//                 (upload_kb / 1024.0, "MB/s")
-//             } else {
-//                 (upload_kb, "KB/s")
-//             };
-
-//             // Ensure the output is always in the format of 00.00
-//             self.network.format(&format!(" {:05.2}{}  {:05.2}{} {}",
-//                     download, download_unit, 
-//                     upload, upload_unit, 
-//                     RESET))
-//         } else {
-//             self.network.format("Network: N/A")
-//         }
-//     } else {
-//         self.network.format("Network: N/A")
-//     }
-// }
 
     fn volume(&self) -> String {
         let vol_info = Command::new("amixer")
@@ -153,14 +155,13 @@ fn battery(&self) -> String {
         self.volume.format(&format!(" {}", volume))
     }
 
-    fn update_status(&self) {
+    fn update_status(&mut self) {
         let status = format!("{}{}{}{}{}", 
                              self.loadavg(), 
                              self.battery(), 
                              self.clock(),
                              self.volume(),
                              self.wlan());
-                             // self.network_speed()); 
         Command::new("xsetroot")
             .arg("-name")
             .arg(status)
@@ -170,7 +171,7 @@ fn battery(&self) -> String {
 }
 
 fn main() {
-    let status_bar = StatusBar::new();
+    let mut status_bar = StatusBar::new();
     let interval = Duration::from_secs(1); // 1-second interval
 
     loop {
